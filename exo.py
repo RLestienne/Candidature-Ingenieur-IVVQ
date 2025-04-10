@@ -153,10 +153,11 @@ def encodage_base64(content_messages):
 
 # Comparaison des TIMESTAMP entre Json et Messaging
 def timestamp_comp (content_messages, contenuJson):
-
+    erreur = ""
     for message in content_messages:  
         if all(message[1] != dico["timestamp"] for dico in contenuJson): # Timestamp de messages tous présents dans les JSON ?
             print(f"{RED}-- TimeStamp de MESSAGING KO {message[1]} non retrouvé dans les fichiers Json{RESET}")
+            erreur =f"{RED}-- TimeStamp de MESSAGING KO {message[1]} non retrouvé dans les fichiers Json{RESET}"
     for json in contenuJson:  
         if all(json["timestamp"] != timestamp_message[1] for timestamp_message in content_messages): # Timestamp de Json tous présents dans les messages ?
             print(f"{RED}-- TimeStamp de JSON KO {json["timestamp"]} non retrouvé dans les Timastamp de messaging{RESET}")
@@ -168,25 +169,27 @@ def timestamp_comp (content_messages, contenuJson):
                     print(f"-- TimeStamp OK correspondant Json ={contenuJson[j]["timestamp"]} : Message ID du Json id:{contenuJson[j]["id"]} : {contenuJson[j]["content"]}")
 
     for i in range(0, len(contenuJson)): # Incrémentation correcte de l'ID 
-        prev = contenuJson[i-1]["timestamp"]
-        cour = contenuJson[i]["timestamp"]
+        prev = contenuJson[i-1]["id"]
+        cour = contenuJson[i]["id"]
 
-        if cour == prev:
-            print(f"{RED}-- ERREUR les Timestamp {prev} & {cour} des Json sont égaux{RESET}")
-            contenuJson[i-1]["flag"] += 1 
-            contenuJson[i-1]["erreur"] += " TimeStamp répétitif /"
-            contenuJson[i]["flag"] += 1
-            contenuJson[i]["erreur"] += " TimeStamp répétitif /"
-        elif cour > prev:
-            print(f"-- Les Timestamp {prev} & {cour} des Json sont dans l'ordre croissant")
+        if cour == prev+1:
+            print(f"-- Les id {prev} & {cour} des Json sont dans l'ordre croissant")
         else:
-            print(f"{RED}-- ERREUR les Timestamp {prev} & {cour} des Json sont pas dans l'ordre décroissant{RESET}")
-            contenuJson[i-1]["flag"] += 1 
-            contenuJson[i-1]["erreur"] += " TimeStamp désordonné /"
+            print(f"{RED}-- ERREUR les id {prev} & {cour} des Json sont pas dans l'ordre décroissant{RESET}")
+            # contenuJson[i-1]["flag"] += 1 
+            # contenuJson[i-1]["erreur"] += " id désordonné /"
             contenuJson[i]["flag"] += 1
-            contenuJson[i]["erreur"] += " TimeStamp désordonné /"
+            contenuJson[i]["erreur"] += " id désordonné /"
+        for j in range(0, len(contenuJson)):
+            if i==j:
+                continue
+            elif contenuJson[i]["id"] == contenuJson[j]["id"]:
+                print(f"{RED}-- ERREUR les id {contenuJson[i]} & {contenuJson[j]} des Json sont égaux{RESET}")
+                contenuJson[j]["flag"] += 1 
+                contenuJson[j]["erreur"] += " id répétitif /"
 
-    return
+
+    return erreur
 
 # Comparaison du CONTENU entre Json et Messaging
 def content_comp(content_messages, content_Json):
@@ -287,7 +290,7 @@ def main():
     # print(f"-- Content messages encodé : {content_message_encode}")
 
 # Comparaison TIMESTAMP
-    timestamp_comp(content_message_encode, contenu_Json)
+    erreur_message_manquant = timestamp_comp(content_message_encode, contenu_Json)
 
 # Comparaison CONTENU 
     content_comp(content_message_encode, contenu_Json)
@@ -301,6 +304,7 @@ def main():
 
     print("############################################\n###################RESUME###################\n############################################")
 # Resume default
+    print(erreur_message_manquant)
     if result_format_Json_Nom !=0:
         print(f"-- Les fichiers Json comptent au total {RED}{result_format_Json_Nom} erreur(s){RESET} de NOM\n  \
               Ce(s) json {erreur_nom_timestamp_tropoumoins} ont un ou plusieurs objet(s) en trop ou en moins\n  \
