@@ -6,6 +6,7 @@ import base64
 RED = "\033[31m"
 RESET = "\033[0m"
 
+## ---------------------------CONNEXIONS------------------------------------------------------------
 # Extraire les tableaux de base de données
 def connexion_messaging():
 # Ouvrir la base de données avec sqlite3
@@ -22,7 +23,7 @@ def connexion_messaging():
     cursor.execute("SELECT id, timestamp, direction, content, contact_id FROM messages")
     content_messages= cursor.fetchall() # Stocker les infos pertinantes de la base de données 
     content_messages = [list(message) for message in content_messages] # Faire une liste de liste pour encode en base 64 les content 
-    print(f"-- Coeur du message : {content_messages} \n")
+    # print(f"-- Coeur du message : {content_messages} \n")
 
 
     # Lire messaging.db/sqlite_sequence
@@ -35,41 +36,46 @@ def connexion_messaging():
     return content_contact, content_messages, content_sqlite_sequence
 
 # Extraire les fichiers JSON 
-def connexion_JSON():
+def connexion_JSON(out):
     # Ouvrir les fichiers json  
     contenu_Json = []
-    for fichiers in os.listdir("data/out"):
-        path = "data/out/" + fichiers
+    for fichiers in os.listdir(out):
+        path = out + "/" + fichiers
         with open(path, "r") as f:
             contenu_Json.append(json.load(f))
 
-    print(f"-- FICHIERS JSON = {contenu_Json} \n")
+    # print(f"-- FICHIERS JSON = {contenu_Json} \n")
     return contenu_Json
 
+## ---------------------------COMPARAISONS / FORMAT CONSIGNE------------------------------------------------------------
 
 
-# Comparaison de la structure des JSON avec la consigne : Format
+# Comparaison de la structure des JSON avec la consigne : NOM
 def format_Json_Objet(contenu_Json, consigne_Json_keys):
     erreur=0
+    keys = []
+    erreur_nom_plusoumoins = ""
+    erreur_nom_manquant = ""
     for fichier in contenu_Json:
-        keys = fichier.keys()
-        i=0
-        print(f"-- Toutes les clés du dico : {keys}")
-        if len(keys) != len(consigne_Json_keys): # Objet en plus ou en moins
-            print("{RED} -!- ERREUR : ATTENTION TAILLE DU JSON EST DIFFERENTE{RESET}")
+        keys.append(list(fichier.keys()))
+        # print(f"-- Toutes les clés du dico : {keys}")
+    if len(keys) != len(consigne_Json_keys): # Objet en plus ou en moins
+            print(f"{RED}-- ERREUR : Il y a plus ou moins d'objet(s) dans le timestamp : {fichier["timestamp"]}{RESET}")
             erreur+=1
-        for key in keys:
-            if key == consigne_Json_keys[i]:
-                # print(f"-- KEY OK : {key}")
-                i+=1
+            erreur_nom_plusoumoins += str(fichier["timestamp"])
+    for key in consigne_Json_keys: # Pour chacune des clés de la consigne voir si présent dans chacun des fichier json 
+        for jsonkey in keys:
+            if key in jsonkey:
+                erreur = erreur # print(f"-- KEY OK : {key}")
             else: 
+                erreur = erreur + 1
+                erreur_nom_manquant += str(fichier["timestamp"])
                 # print(f"-- ERREUR KEY KO : {key}")
-                i+=1
-                erreur+=1
-            continue
-    return erreur
+                
+        continue
+    return erreur, erreur_nom_plusoumoins, erreur_nom_manquant
 
-# Comparaison de la structure des JSON avec la consigne : Types
+# Comparaison de la structure des JSON avec la consigne : TYPE
 def format_Json_Type(contenu_Json, consigne_Json_values):
     erreur=0
     for dico in contenu_Json:
@@ -79,7 +85,7 @@ def format_Json_Type(contenu_Json, consigne_Json_values):
         #     erreur+=1
         for typeValeur in typeValeurs:
             if type(typeValeur) == type(consigne_Json_values[i]):
-                # print(f"-- KEY OK : {valeur}")
+                # print(f"-- KEY OK : {typeValeur}")
                 i+=1
             else: 
                 print(f"{RED}-- ERREUR KEY KO : {typeValeur} différent de {type(consigne_Json_values[i])}{RESET}")
@@ -89,12 +95,26 @@ def format_Json_Type(contenu_Json, consigne_Json_values):
     return erreur
 
 
-# Trier les json dans l'ordre des timestamp
+## ---------------------------COMPARAISONS / JSON & MESSAGING------------------------------------------------------------
+
+
+# Implémentation de l'item flag au dictionnaire des Json 
+def flag_implementation(dico_json):
+    for i in range(0, len(dico_json)):
+        dico_json[i]["flag"] = 0
+        dico_json[i]["erreur"] = ""
+        # print(f"{dico_json[i]}")
+
+    # print(f"{dico_json}")
+    return dico_json
+
+
+# Trier les json dans l'ordre des TIMESTAMP
 def tri_et_comparaison_id_Json(contenu_Json):
     # listeJsonSorted = sorted(contenu_Json, key="id")
     # Tri de la liste de Json en fonction de leur Timestamp
     listeJsonSorted = sorted(contenu_Json, key=lambda p: p["timestamp"])
-    print(listeJsonSorted)
+    # print(listeJsonSorted)
 
     if listeJsonSorted[0]["id"] != 1: print(f"{RED}-!- Erreur : L'ID des messages ne commence pas par 1{RESET}") # Si il manque des ID alors lesquels 
 
@@ -131,31 +151,55 @@ def encodage_base64(content_messages):
     return content_messages
 
 
-# Comparaison des TimeStamp entre Json et Messaging
+# Comparaison des TIMESTAMP entre Json et Messaging
 def timestamp_comp (content_messages, contenuJson):
-    for tuple in content_messages:
-        if all(tuple[1] != dico["timestamp"] for dico in contenuJson):
-            print(f"{RED}-- TimeStamp KO {tuple[1]} non retrouvé dans les fichiers Json{RESET}")
-    # for dico in contenuJson:
-    #     for tuple in content_messages:
-    #         if tuple[1] not in dico["timestamp"]:
-    #             print(f"-- TimeStamp KO {tuple[1]} non retrouvé dans les fichiers Json")
-    for i in range(0, len(content_messages)):
-            for j in range(0, len(contenuJson)):
+
+    for message in content_messages:  
+        if all(message[1] != dico["timestamp"] for dico in contenuJson): # Timestamp de messages tous présents dans les JSON ?
+            print(f"{RED}-- TimeStamp de MESSAGING KO {message[1]} non retrouvé dans les fichiers Json{RESET}")
+    for json in contenuJson:  
+        if all(json["timestamp"] != timestamp_message[1] for timestamp_message in content_messages): # Timestamp de Json tous présents dans les messages ?
+            print(f"{RED}-- TimeStamp de JSON KO {json["timestamp"]} non retrouvé dans les Timastamp de messaging{RESET}")
+            json["flag"] = json["flag"] + 1
+            json["erreur"] +=" TimeStamp non présent dans messaging /"
+    for i in range(0, len(content_messages)): # Quel Timestamp sont à la fois dans Json et Messaging
+            for j in range(0, len(contenuJson)): 
                 if content_messages[i][1] == contenuJson[j]["timestamp"]:
                     print(f"-- TimeStamp OK correspondant Json ={contenuJson[j]["timestamp"]} : Message ID du Json id:{contenuJson[j]["id"]} : {contenuJson[j]["content"]}")
-            
+
+    for i in range(0, len(contenuJson)): # Incrémentation correcte de l'ID 
+        prev = contenuJson[i-1]["timestamp"]
+        cour = contenuJson[i]["timestamp"]
+
+        if cour == prev:
+            print(f"{RED}-- ERREUR les Timestamp {prev} & {cour} des Json sont égaux{RESET}")
+            contenuJson[i-1]["flag"] += 1 
+            contenuJson[i-1]["erreur"] += " TimeStamp répétitif /"
+            contenuJson[i]["flag"] += 1
+            contenuJson[i]["erreur"] += " TimeStamp répétitif /"
+        elif cour > prev:
+            print(f"-- Les Timestamp {prev} & {cour} des Json sont dans l'ordre croissant")
+        else:
+            print(f"{RED}-- ERREUR les Timestamp {prev} & {cour} des Json sont pas dans l'ordre décroissant{RESET}")
+            contenuJson[i-1]["flag"] += 1 
+            contenuJson[i-1]["erreur"] += " TimeStamp désordonné /"
+            contenuJson[i]["flag"] += 1
+            contenuJson[i]["erreur"] += " TimeStamp désordonné /"
+
     return
 
 # Comparaison du CONTENU entre Json et Messaging
 def content_comp(content_messages, content_Json):
     # Pour timestamp égal
-    for i in range(0, len(content_messages)):
-        for j in range(0, len(content_Json)):
-            if content_messages[i][1] == content_Json[j]["timestamp"] and content_messages[i][3] == content_Json[j]["content"]:
-                print(f"-- Le contenu de json timestamp : {content_Json[j]["timestamp"]} correspond au contenu de messaging du meme timestamp : {content_Json[j]["content"]}")
-            elif content_messages[i][1] == content_Json[j]["timestamp"]:
-                print(f"{RED}-- ERREUR : Json content :<{content_Json[j]["content"]}> Messaging content :<{content_messages[i][3]}> pour le TimeStamp : {content_Json[i]["timestamp"]}{RESET}")
+    for i in range(0, len(content_Json)):
+        for j in range(0, len(content_messages)):
+            if content_messages[j][1] == content_Json[i]["timestamp"] and content_messages[j][3] == content_Json[i]["content"]:
+                print(f"-- Le contenu de json timestamp : {content_Json[i]["timestamp"]} correspond au contenu de messaging du meme timestamp : {content_Json[i]["content"]}")
+            elif content_messages[j][1] == content_Json[i]["timestamp"]:
+                print(f"{RED}-- ERREUR : Json content :<{content_Json[i]["content"]}> Messaging content :<{content_messages[j][3]}> pour le TimeStamp : {content_Json[i]["timestamp"]}{RESET}")
+                content_Json[i]["flag"] +=1
+                content_Json[i]["erreur"] += " Contenu du message /"
+
     return 
 
 
@@ -174,7 +218,7 @@ def direction_comp(messages, json):
     #         elif messages[i][1] == json[j]["timestamp"]:
     #             print(f"{RED}-- ERREUR : Json direction :<{json[j]['direction']}> Messaging direction :<{messages[i][2]}> pour le TimeStamp : {json[i]["timestamp"]}{RESET}")
     all_json_directions = []
-    for j in range(0, len(json)):
+    for j in range(0, len(json)): # Pour éviter les erreurs de format
         all_json_directions.append(list(json[j].values()))
     # print(f"-- all directions = {all_json_directions}")
     
@@ -183,7 +227,10 @@ def direction_comp(messages, json):
             if messages[i][1] == json[j]["timestamp"] and messages[i][2] == all_json_directions[j][2]:
                 print(f"-- La direction de Json timestamp : {json[j]["timestamp"]} correspond à la direction de messaging du meme timestamp : {all_json_directions[j][2]}")
             elif messages[i][1] == json[j]["timestamp"]:
-                print(f"{RED}-- ERREUR : Json direction :<{all_json_directions[j][2]}> Messaging direction :<{messages[i][2]}> pour le TimeStamp : {json[i]["timestamp"]}{RESET}")
+                print(f"{RED}-- ERREUR : Json direction :<{all_json_directions[j][2]}> Messaging direction :<{messages[i][2]}> pour le TimeStamp : {json[j]["timestamp"]}{RESET}")
+                json[j]["flag"] +=1
+                json[j]["erreur"] += " Direction du message /"
+
     return 
 
 # Comparaison du CONTACT id du message entre Json et Messaging
@@ -191,36 +238,49 @@ def contact_comp(messages, json, consigne_contact_id):
     # Encodage contact id de messaging
     for message in messages:
         prev = message[-1]
-        message[-1] = consigne_contact_id[str(message[-1])]
-        # print(f"-- Contact id message avant = {prev} après = {message[-1]} du message id: {message[0]}")
-    for i in range(0, len(messages)):
-        for j in range(0, len(json)):
-            if messages[i][1] == json[j]["timestamp"] and messages[i][-1] == json[j]["contact"]:
-                print(f"-- Le contact id de Json timestamp : {json[j]["timestamp"]} correspond au contact de messaging du meme timestamp : {json[j]["contact"]}")
-            elif messages[i][1] == json[j]["timestamp"]:
-                print(f"{RED}-- ERREUR : Json Contact id :<{json[j]["contact"]}> Messaging Contact id :<{messages[i][2]}> pour le TimeStamp : {json[i]["timestamp"]}{RESET}")
-
-
+        for j in range(0, len(consigne_contact_id)):
+            if message[-1] == consigne_contact_id[j][0]:
+                message[-1] = consigne_contact_id[j][1]
+        print(f"-- Contact id message avant = {prev} après = {message[-1]} du message id: {message[0]}")
+    for i in range(0, len(json)):
+        for j in range(0, len(messages)):
+            if messages[j][1] == json[i]["timestamp"] and messages[j][-1] == json[i]["contact"]:
+                print(f"-- Le contact id de Json timestamp : {json[i]["timestamp"]} correspond au contact de messaging du meme timestamp : {json[i]["contact"]}")
+            elif messages[j][1] == json[i]["timestamp"]:
+                print(f"{RED}-- ERREUR : Json Contact id :<{json[i]["contact"]}> Messaging Contact id :<{messages[j][2]}> pour le TimeStamp : {json[i]["timestamp"]}{RESET}")
+                json[i]["flag"] +=1
+                json[i]["erreur"] += " Contact /"
 
     return
+
+# Resume Default
+def resume_default(contenu_json):
+    for i in range(0, len(contenu_json)):
+        print(f"-- Le fichier Json [timestamp={contenu_json[i]["timestamp"]}] présente {RED}{contenu_json[i]["flag"]} erreur(s) :{contenu_json[i]["erreur"]}{RESET}")
+    return
+
+
+## ---------------------------MAIN------------------------------------------------------------
 
 
 def main():
 
     content_contact, content_messages, content_sqlite_sequence = connexion_messaging()
-    contenu_Json = connexion_JSON()
-    contenu_JsonTri = tri_et_comparaison_id_Json(contenu_Json) # Tri par timestamp
+    contenu_Json_raw = connexion_JSON(out)
+    # contenu_JsonTri = tri_et_comparaison_id_Json(contenu_Json_raw) # Tri par timestamp
 
 
-    default_format = format_Json_Objet(contenu_Json,consigne_Json_keys)
-    print(f" -!- Il y a {default_format} liée(s) au nom des objets dans les fichiers JSON ")
+    result_format_Json_Nom, erreur_nom_timestamp_tropoumoins, erreur_nom_timestamp_manquant = format_Json_Objet(contenu_Json_raw,consigne_Json_keys)
     
-    default_type = format_Json_Type(contenu_Json,consigne_Json_values)
-    print(f" -!- Il y a {default_type} liée(s) au type des objets dans les fichiers JSON ")
+    result_format_Json_Type = format_Json_Type(contenu_Json_raw,consigne_Json_values)
+
+# Ajout de l'item Flag au dictionnaire des Json
+    contenu_Json = flag_implementation(contenu_Json_raw)
 
 # Décodage basse 64
     # contenu_Json_decodeB64 = decodage_base64(contenu_JsonTri)
     # print(contenu_Json_decodeB64)
+
 
 # Encodage base 64 
     content_message_encode = encodage_base64(content_messages)
@@ -236,13 +296,29 @@ def main():
     direction_comp(content_message_encode, contenu_Json)
 
 # Comparaisond du CONTACT id
-    contact_comp(content_message_encode, contenu_Json, consigne_contact_id)
+    contact_comp(content_message_encode, contenu_Json, content_contact)
+
+
+    print("############################################\n###################RESUME###################\n############################################")
+# Resume default
+    if result_format_Json_Nom !=0:
+        print(f"-- Les fichiers Json comptent au total {RED}{result_format_Json_Nom} erreur(s){RESET} de NOM\n  \
+              Ce(s) json {erreur_nom_timestamp_tropoumoins} ont un ou plusieurs objet(s) en trop ou en moins\n  \
+              Ce(s) json {erreur_nom_timestamp_manquant} ont un ou plusieurs objet(s) manquant")
+    else: print("-- Il n'y a pas d'erreur de NOM dans les fichiers Json")
+    if result_format_Json_Type !=0:
+        print(f"-- Les fichiers Json comptent au total {RED}{result_format_Json_Type} erreur(s){RESET} de TYPE")
+    else: print("-- Il n'y a pas d'erreur de TYPE dans les fichiers Json")
+    
+    resume_default(contenu_Json)
 
 
 
 if __name__ == "__main__":
     consigne_Json_keys = ['id', 'timestamp', 'direction', 'content', 'contact']
-    # consigne_Json_keys = ['id', 'timestamp', 'direction', 'content', 'contact','longueur','elkjf']
+    # consigne_Json_keys = ['id', 'timestamp', 'direction', 'content', 'contact','longueur','elkjf'] #test
     consigne_Json_values = [1, 1, "", "", ""]
-    consigne_contact_id = {'1' : 'Tom', '2' : 'Zak', '3' : 'My Bank', '4' : 'Maman'}
+    # consigne_contact_id = {'1' : 'Tom', '2' : 'Zak', '3' : 'My Bank', '4' : 'Maman'}
+    out = "data/out"
+    # out = "data/outTest"
     main()
